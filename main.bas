@@ -2,7 +2,10 @@
 '#include <keys.bas>
 #include "gardens.bas"
 #include "hrprint.bas"
+'Library from https://github.com/raimis001/ZXLib
 #include "../helper.bas"
+#include "../perlin.bas"
+
 #include <print42.bas>
 #include <screen.bas>
 ''#include <attr.bas>
@@ -107,6 +110,9 @@ END SUB
 
 SUB load_garden(g as ubyte)
 
+    cls
+    shufflePerlin()
+
     IF g = 1 THEN RESTORE garden1
 
     SCORE_MAX = 0
@@ -115,12 +121,36 @@ SUB load_garden(g as ubyte)
     for y = 0 to FIELD_H - 1
         for x = 0 to FIELD_W - 1
             READ garden(y,x)
+        next x
+    next y
+
+    ' Generate grass'
+    for y = 5 to FIELD_H - 6
+        for x = 5 to FIELD_W - 6
+            if garden(y, x) > 2 THEN continue for
+            if noise01(x * 8, y * 8, 20, 200) = 1 THEN
+                if RND > 0.7 THEN 
+                    garden(y, x) = 2 ' Yellow grass
+                else 
+                    garden(y, x) = 1 ' Grass
+                end if
+            end if
+        next x
+    next y
+
+    ' Draw garden
+    for y = 0 to FIELD_H - 1
+        for x = 0 to FIELD_W - 1
             if garden(y,x) = 0 THEN continue for
+
             if is_grass(x,y) THEN draw_grass(x, y): SCORE_MAX = SCORE_MAX + 1: continue for
             if is_obsticle(x,y) THEN draw_obsticle(x, y): continue for
             if garden(y, x) = 99 THEN ch_posX = x * 8: ch_posY = y * 8: continue for
             if garden(y, x) = 50 THEN money_x = x: money_y = y: continue for
-            
+
+            if is_grass(x, y) THEN draw_grass(x, y): continue for
+            if is_obsticle(x, y) THEN draw_obsticle(x, y): continue for
+            if garden(y, x) = 50 THEN draw_quest(x, y): continue for
         next x
     next y
 
@@ -128,11 +158,16 @@ END SUB
 
 SUB draw_grass(x as ubyte, y as ubyte)
     DIM p as ubyte = GREEN
-    if garden(y,x) = 2
-        p = YELLOW
-    end if
+    if garden(y,x) = 2 THEN p = YELLOW
 
-    PRINT AT y, x; PAPER p; BRIGHT 0; " "
+    DIM idx as ubyte = 0
+    if garden(y - 1, x) = 1 or garden(y - 1, x) = 2 THEN idx = 1
+    if garden(y, x + 1) = 1 or garden(y, x + 1) = 2 THEN idx = idx + 2
+    if garden(y + 1, x) = 1 or garden(y + 1, x) = 2 THEN idx = idx + 4
+    if garden(y, x - 1) = 1 or garden(y, x - 1) = 2 THEN idx = idx + 8
+
+    POKE UINTEGER 23675, @Garden
+    PRINT AT y, x; INK p; BRIGHT 1; CHR(144 + idx);
 END SUB
 
 SUB draw_obsticle(x as ubyte, y as ubyte)
@@ -144,8 +179,10 @@ SUB draw_obsticle(x as ubyte, y as ubyte)
     end if
     if garden(y, x) = 18 then
         i = GREEN
+        POKE UINTEGER 23675, @Garden
+    else
+        POKE UINTEGER 23675, @Character
     end if
-    POKE UINTEGER 23675, @Character
     PRINT AT y, x; PAPER p;  INK i; BRIGHT 0; CHR(142 + garden(y, x));
 END SUB
 
@@ -185,13 +222,13 @@ SUB garden_update()
         next i
     end if
 
-    if mole_count > 0 THEN
-        DIM frame as uLong = getFrames()
-        if mole_frame <= frame THEN
-            mole_frame = frame + 300 + INT(RND * 500)
-            mole_recreate()
-        end if
-    end if
+    'if mole_count > 0 THEN
+    ''    DIM frame as uLong = getFrames()
+    ''    if mole_frame <= frame THEN
+    ''        mole_frame = frame + 300 + INT(RND * 500)
+    ''        mole_recreate()
+    ''    end if
+    'end if
 END SUB
 
 SUB mole_recreate()
@@ -310,7 +347,7 @@ END SUB
 
 SUB garden_start()
 
-    'POKE UINTEGER 23675, @Character
+    POKE UINTEGER 23675, @Garden
 
     load_garden(1)
     HRPrint(ch_posX , ch_posY, @Character, 0, 0)
@@ -349,20 +386,18 @@ END SUB
 DIM quest_answer as ubyte = 0 ' 0 - yes, 1 - no
 SUB quest_loop(key as string)
 
-
-
     DIM old as ubyte = quest_answer
     DIM dir as ubyte = get_controlls(key)
 
     if dir = ENTER THEN 
         clear_screen()
-        if quest_answer = 0 THEN GAME = 1: garden_start()
-        if quest_answer = 1 THEN GAME = 0: load_village()
+        if quest_answer = 1 THEN GAME = 1: garden_start()
+        if quest_answer = 0 THEN GAME = 0: load_village()
         return
     end if
 
-    if dir = LEFT THEN quest_answer = 0
-    if dir = RIGHT THEN quest_answer = 1
+    if dir = LEFT THEN quest_answer = 1
+    if dir = RIGHT THEN quest_answer = 0
 
     if old <> quest_answer THEN
         if quest_answer = 0 THEN
@@ -377,7 +412,7 @@ SUB quest_loop(key as string)
 
 END SUB
 
-sub draw_panel(width as ubyte, height as ubyte)
+sub draw_panel(width as ubyte, height as ubyte, pInk as ubyte = PINK, pPaper as ubyte = BLUE)
 
     DIM x as ubyte = (FIELD_W - width) / 2
     DIM y as ubyte = (FIELD_H - height) / 2
@@ -392,15 +427,15 @@ sub draw_panel(width as ubyte, height as ubyte)
             if j = 0 THEN c = CHR(131) ' Top border
             if j = height - 1 THEN c = CHR(140) ' Bottom border
 
-            PRINT PAPER PINK; INK BLACK; AT y + j, x + i; c;
+            PRINT PAPER pPaper; INK pInk; AT y + j, x + i; c;
         next i
     next j
 
 
-    PRINT PAPER PINK; INK BLACK; AT y, x; CHR(139); ' Top-left corner
-    PRINT PAPER PINK; INK BLACK; AT y + height - 1, x; CHR(142); ' Bottom-left corner
-    PRINT PAPER PINK; INK BLACK; AT y, x + width - 1; CHR(135); ' Top-right corner
-    PRINT PAPER PINK; INK BLACK; AT y + height - 1, x + width - 1; CHR(141); ' Bottom-right corner
+    PRINT PAPER pPaper; INK pInk; AT y, x; CHR(139); ' Top-left corner
+    PRINT PAPER pPaper; INK pInk; AT y + height - 1, x; CHR(142); ' Bottom-left corner
+    PRINT PAPER pPaper; INK pInk; AT y, x + width - 1; CHR(135); ' Top-right corner
+    PRINT PAPER pPaper; INK pInk; AT y + height - 1, x + width - 1; CHR(141); ' Bottom-right corner
 END SUB
 
 
@@ -477,7 +512,8 @@ PROGRAM:
     'draw_panel(20, 10)
 
     wait_for_start()
-    randomize 
+    randomize
+    initPerlin()
     clear_screen()
     resetFrames()
     load_village() 
@@ -512,7 +548,10 @@ END_PROGRAMM:
 
 
 Character:
-ASM
-    #include "../../test.asm"
-END ASM
-'#include "char.asm"
+    ASM
+        #include "char.asm"
+    END ASM
+Garden:
+    ASM
+        #include "garden.asm"
+    END ASM
