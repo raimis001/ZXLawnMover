@@ -117,6 +117,9 @@ SUB load_garden(g as ubyte)
 
     SCORE_MAX = 0
     mole_count = 2
+    for i = 0 to 4
+        moles(i) = 0
+    next i
 
     for y = 0 to FIELD_H - 1
         for x = 0 to FIELD_W - 1
@@ -124,10 +127,14 @@ SUB load_garden(g as ubyte)
         next x
     next y
 
-    ' Generate grass'
+    ' Generate grass and trees
     for y = 5 to FIELD_H - 6
         for x = 5 to FIELD_W - 6
             if garden(y, x) > 2 THEN continue for
+            if noise01(x * 8, y * 8, 3, 240) = 1 THEN
+                garden(y, x) = 18 ' Tree
+                continue for 
+            end if
             if noise01(x * 8, y * 8, 20, 200) = 1 THEN
                 if RND > 0.7 THEN 
                     garden(y, x) = 2 ' Yellow grass
@@ -148,11 +155,10 @@ SUB load_garden(g as ubyte)
             if garden(y, x) = 99 THEN ch_posX = x * 8: ch_posY = y * 8: continue for
             if garden(y, x) = 50 THEN money_x = x: money_y = y: continue for
 
-            if is_grass(x, y) THEN draw_grass(x, y): continue for
-            if is_obsticle(x, y) THEN draw_obsticle(x, y): continue for
-            if garden(y, x) = 50 THEN draw_quest(x, y): continue for
         next x
     next y
+
+    mole_recreate()
 
 END SUB
 
@@ -222,22 +228,23 @@ SUB garden_update()
         next i
     end if
 
-    'if mole_count > 0 THEN
-    ''    DIM frame as uLong = getFrames()
-    ''    if mole_frame <= frame THEN
-    ''        mole_frame = frame + 300 + INT(RND * 500)
-    ''        mole_recreate()
-    ''    end if
-    'end if
+    if mole_count > 0 THEN
+        DIM frame as uLong = getFrames()
+        if mole_frame <= frame THEN
+            mole_frame = frame + 300 + INT(RND * 500)
+            mole_recreate()
+        end if
+    end if
 END SUB
 
 SUB mole_recreate()
     DIM mx as ubyte
     DIM my as ubyte
+
     for i = 0 to mole_count - 1
         if moles(i) > 0 THEN
-            mx = get_posX(moles(0))
-            my = get_posY(moles(0))
+            mx = get_posX(moles(i))
+            my = get_posY(moles(i))
             garden(my, mx) = 0
             PRINT AT my, mx; " ";
         end if
@@ -247,7 +254,7 @@ SUB mole_recreate()
             if garden(my, mx) = 0 THEN
                 'print at 0,0; moles(0); " "; get_index(mx, my); " x:"; mx; " y:"; my;"    "
                 garden(my, mx) = 100
-                moles(1) = get_index(mx, my)
+                moles(i) = get_index(mx, my)
                 PRINT AT my, mx; PAPER BLUE; INK RED; BRIGHT 0; CHR(164);
                 EXIT DO
             end if
@@ -487,13 +494,18 @@ SUB move(dir as ubyte)
                 if garden(y, x) = 50 THEN draw_quest(x, y)
             end if
 
+            if GAME = 1 THEN
+                if is_grass(x, y) THEN draw_grass(x, y)
+                if is_obsticle(x, y) THEN draw_obsticle(x, y)
+            end if
+
         next y
     next x
 
     'HRPrint(old_x, old_y, 32, 0, 0)
     'attr = paper + ink * 8
     if GAME = 1 THEN
-        HRPrint(ch_posX, ch_posY, @Character + anim * 8 + animation * 32, 0 , 0)   
+        HRPrint(ch_posX, ch_posY, @Character + anim * 8 + animation * 32, 0 , 0xAE)   
     else
         HRPrint(ch_posX, ch_posY, @Character + 18 * 8  + animation * 8, 0 , 0xAE)
     end if
